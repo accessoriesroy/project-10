@@ -31,6 +31,7 @@
         }
         .hidden { display: none; }
         .badge { background: #dc3545; padding: 5px 10px; border-radius: 4px; font-size: 14px; display: inline-block; margin-bottom: 10px; }
+        .error-msg { color: #ff6b6b; font-size: 14px; margin-top: 10px; }
     </style>
 </head>
 <body>
@@ -56,9 +57,10 @@
     <div id="view-section" class="box hidden">
         <span class="badge">🔴 লাইভ সিসি ক্যামেরা ফিড অন</span>
         <div id="video-container">
-            <video id="cameraFeed" autoplay playsinline></video>
+            <video id="cameraFeed" autoplay playsinline muted></video>
         </div>
-        <button onclick="disconnectCamera()" style="background: #dc3545; width: 100%;">কানেকশন বন্ধ করুন</button>
+        <div id="errorBox" class="error-msg"></div>
+        <button onclick="disconnectCamera()" style="background: #dc3545; width: 100%; margin-top: 10px;">কানেকশন বন্ধ করুন</button>
     </div>
 </div>
 
@@ -85,30 +87,36 @@
             console.log('CCTV Ready. ID: ' + id);
         });
 
-        // সিসি ক্যামেরা ফোন ব্যাকগ্রাউন্ডে সবসময় কল রিসিভ করার জন্য প্রস্তুত থাকবে
+        // সিসি ক্যামেরা ফোন কল আসার সাথে সাথে ক্যামেরা স্ট্রিম শুরু করবে
         peer.on('call', (call) => {
-            // পেছনের ক্যামেরা (environment) সিলেক্ট করার চেষ্টা করা হচ্ছে
+            // ১. ক্যামেরা এক্সেস নেওয়ার সহজ লজিক
             navigator.mediaDevices.getUserMedia({ 
-                video: { facingMode: { exact: "environment" } }, 
-                audio: true 
-            })
-            .catch(() => {
-                // যদি পেছনের ক্যামেরা সরাসরি না পাওয়া যায়, তবে যেকোনো একটি ক্যামেরা অন করবে
-                return navigator.mediaDevices.getUserMedia({ video: true, audio: true });
+                video: { facingMode: "environment" }, 
+                audio: false 
             })
             .then((stream) => {
                 localStream = stream;
                 call.answer(stream);
                 showViewSection();
             })
-            .catch(err => {
-                alert("ক্যামেরা পারমিশন পাওয়া যায়নি বা ব্রাউজার ব্লক করে রেখেছে! দয়া করে ব্রাউজার সেটিংস থেকে ক্যামেরা পারমিশন দিন।");
-                console.error(err);
+            .catch((err) => {
+                console.log("Environment camera failed, trying default camera...", err);
+                // যদি পেছনের ক্যামেরা না পায় তবে ডিফল্ট যেকোনো ক্যামেরা অন করবে
+                return navigator.mediaDevices.getUserMedia({ video: true, audio: false });
+            })
+            .then((stream) => {
+                if(stream) {
+                    localStream = stream;
+                    call.answer(stream);
+                    showViewSection();
+                }
+            })
+            .catch((err) => {
+                alert("⚠️ ক্যামেরা পারমিশন পাওয়া যায়নি! ব্রাউজারের সাইট সেটিংসে গিয়ে Camera Allow করে দিন।");
             });
         });
     }
 
-    // ভিউয়ার ফোন থেকে ক্যামেরা ফোনে কানেক্ট করার ফাংশন
     function startMonitoring() {
         let targetId = document.getElementById('target-id').value;
         if (!targetId || targetId.length !== 4) {
@@ -116,31 +124,28 @@
             return;
         }
 
-        navigator.mediaDevices.getUserMedia({ video: false, audio: false })
-        .then((dummyStream) => {
-            let call = peer.call(targetId, dummyStream);
+        // ভিউয়ার ফোন কোনো ভিডিও পাঠাবে না, শুধু কানেক্ট হবে
+        let call = peer.call(targetId, new MediaStream());
+        
+        call.on('stream', (remoteStream) => {
+            let videoElement = document.getElementById('cameraFeed');
+            videoElement.srcObject = remoteStream;
             
-            call.on('stream', (remoteStream) => {
-                let videoElement = document.getElementById('cameraFeed');
-                videoElement.srcObject = remoteStream;
-                showViewSection();
+            // ব্রাউজার যাতে অটো-প্লে আটকে না রাখে
+            videoElement.play().catch(e => {
+                console.log("Autoplay error:", e);
+                document.getElementById('errorBox').innerText = "ভিডিও প্লে করতে স্ক্রিনে একবার টাচ করুন।";
             });
-
-            call.on('close', () => {
-                alert("ক্যামেরা কানেকশন বিচ্ছিন্ন হয়েছে!");
-                disconnectCamera();
-            });
-
-            currentCall = call;
-        })
-        .catch(err => {
-            let call = peer.call(targetId, new MediaStream());
-            call.on('stream', (remoteStream) => {
-                document.getElementById('cameraFeed').srcObject = remoteStream;
-                showViewSection();
-            });
-            currentCall = call;
+            
+            showViewSection();
         });
+
+        call.on('close', () => {
+            alert("ক্যামেরা কানেকশন বিচ্ছিন্ন হয়েছে!");
+            disconnectCamera();
+        });
+
+        currentCall = call;
     }
 
     function showViewSection() {
@@ -153,8 +158,6 @@
         if (localStream) {
             localStream.getTracks().forEach(track => track.stop());
         }
-        document.getElementById('view-section').classList.add('hidden');
-        document.getElementById('setup-section').classList.remove('hidden');
         window.location.reload();
     }
 
