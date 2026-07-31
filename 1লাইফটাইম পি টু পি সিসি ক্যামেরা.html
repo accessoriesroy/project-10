@@ -1,0 +1,165 @@
+<!DOCTYPE html>
+<html lang="bn">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>লাইফটাইম পি টু পি সিসি ক্যামেরা</title>
+    <!-- PeerJS লাইব্রেরি -->
+    <script src="https://unpkg.com/peerjs@1.5.2/dist/peerjs.min.js"></script>
+    <style>
+        body { font-family: 'SolaimanLipi', Arial, sans-serif; background: #121212; color: white; margin: 0; padding: 15px; text-align: center; }
+        .container { max-width: 600px; margin: auto; background: #1e1e1e; padding: 20px; border-radius: 12px; box-shadow: 0 4px 15px rgba(0,0,0,0.5); }
+        .box { margin-bottom: 20px; padding: 15px; border: 1px solid #333; border-radius: 8px; background: #2a2a2a; }
+        input, button { padding: 12px; font-size: 16px; margin: 5px; border-radius: 6px; border: none; }
+        input { background: #333; color: white; border: 1px solid #555; width: 80%; text-align: center; }
+        button { background: #007bff; color: white; cursor: pointer; font-weight: bold; }
+        button:hover { background: #0056b3; }
+        
+        #video-container { 
+            position: relative; 
+            width: 100%; 
+            height: 400px; 
+            background: black; 
+            border-radius: 8px; 
+            overflow: hidden; 
+            margin-bottom: 10px;
+        }
+        #cameraFeed { 
+            width: 100%; 
+            height: 100%; 
+            object-fit: cover; 
+        }
+        .hidden { display: none; }
+        .badge { background: #dc3545; padding: 5px 10px; border-radius: 4px; font-size: 14px; display: inline-block; margin-bottom: 10px; }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <h2>📱 পি টু পি মোবাইল সিসি ক্যামেরা</h2>
+
+    <!-- মোড সিলেকশন ও কানেকশন সেকশন -->
+    <div id="setup-section" class="box">
+        <h3>মোডের ধরণ নির্বাচন করুন</h3>
+        <p>ক্যামেরা ফোনের আইডি (কোড): <span id="my-peer-id" style="font-weight: bold; color: #4CAF50;">জেনারেট হচ্ছে...</span></p>
+        <p style="font-size: 13px; color: #aaa;">(যে ফোনটি সিসি ক্যামেরা হিসেবে রাখবেন, সেটি চালু করে এই কোডটি নোট করে রাখুন)</p>
+        
+        <hr style="border-color: #444;">
+        
+        <h4>মনিটর (ভিউয়ার) মোড:</h4>
+        <input type="text" id="target-id" placeholder="ক্যামেরা ফোনের ৪ সংখ্যার কোড দিন" maxlength="4">
+        <br>
+        <button onclick="startMonitoring()" style="background: #28a745;">👁️ ক্যামেরা লাইভ দেখুন</button>
+    </div>
+
+    <!-- লাইভ ফিড বা সিসি ক্যামেরা ভিউ সেকশন -->
+    <div id="view-section" class="box hidden">
+        <span class="badge">🔴 লাইভ সিসি ক্যামেরা ফিড অন</span>
+        <div id="video-container">
+            <video id="cameraFeed" autoplay playsinline></video>
+        </div>
+        <button onclick="disconnectCamera()" style="background: #dc3545; width: 100%;">কানেকশন বন্ধ করুন</button>
+    </div>
+</div>
+
+<script>
+    let peer;
+    let myId;
+    let currentCall;
+    let localStream;
+
+    function generateRandomCode() {
+        return Math.floor(1000 + Math.random() * 9000).toString();
+    }
+
+    function initCCTV() {
+        let savedId = localStorage.getItem('cctv_peer_id');
+        myId = savedId ? savedId : generateRandomCode();
+        localStorage.setItem('cctv_peer_id', myId);
+
+        document.getElementById('my-peer-id').innerText = myId;
+
+        peer = new Peer(myId);
+
+        peer.on('open', (id) => {
+            console.log('CCTV Ready. ID: ' + id);
+        });
+
+        // সিসি ক্যামেরা ফোন ব্যাকগ্রাউন্ডে সবসময় কল রিসিভ করার জন্য প্রস্তুত থাকবে
+        peer.on('call', (call) => {
+            // পেছনের ক্যামেরা (environment) সিলেক্ট করার চেষ্টা করা হচ্ছে
+            navigator.mediaDevices.getUserMedia({ 
+                video: { facingMode: { exact: "environment" } }, 
+                audio: true 
+            })
+            .catch(() => {
+                // যদি পেছনের ক্যামেরা সরাসরি না পাওয়া যায়, তবে যেকোনো একটি ক্যামেরা অন করবে
+                return navigator.mediaDevices.getUserMedia({ video: true, audio: true });
+            })
+            .then((stream) => {
+                localStream = stream;
+                call.answer(stream);
+                showViewSection();
+            })
+            .catch(err => {
+                alert("ক্যামেরা পারমিশন পাওয়া যায়নি বা ব্রাউজার ব্লক করে রেখেছে! দয়া করে ব্রাউজার সেটিংস থেকে ক্যামেরা পারমিশন দিন।");
+                console.error(err);
+            });
+        });
+    }
+
+    // ভিউয়ার ফোন থেকে ক্যামেরা ফোনে কানেক্ট করার ফাংশন
+    function startMonitoring() {
+        let targetId = document.getElementById('target-id').value;
+        if (!targetId || targetId.length !== 4) {
+            alert("সঠিক ৪ সংখ্যার ক্যামেরা কোড দিন!");
+            return;
+        }
+
+        navigator.mediaDevices.getUserMedia({ video: false, audio: false })
+        .then((dummyStream) => {
+            let call = peer.call(targetId, dummyStream);
+            
+            call.on('stream', (remoteStream) => {
+                let videoElement = document.getElementById('cameraFeed');
+                videoElement.srcObject = remoteStream;
+                showViewSection();
+            });
+
+            call.on('close', () => {
+                alert("ক্যামেরা কানেকশন বিচ্ছিন্ন হয়েছে!");
+                disconnectCamera();
+            });
+
+            currentCall = call;
+        })
+        .catch(err => {
+            let call = peer.call(targetId, new MediaStream());
+            call.on('stream', (remoteStream) => {
+                document.getElementById('cameraFeed').srcObject = remoteStream;
+                showViewSection();
+            });
+            currentCall = call;
+        });
+    }
+
+    function showViewSection() {
+        document.getElementById('setup-section').classList.add('hidden');
+        document.getElementById('view-section').classList.remove('hidden');
+    }
+
+    function disconnectCamera() {
+        if (currentCall) currentCall.close();
+        if (localStream) {
+            localStream.getTracks().forEach(track => track.stop());
+        }
+        document.getElementById('view-section').classList.add('hidden');
+        document.getElementById('setup-section').classList.remove('hidden');
+        window.location.reload();
+    }
+
+    window.onload = initCCTV;
+</script>
+
+</body>
+</html>
